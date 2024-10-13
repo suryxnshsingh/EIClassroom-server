@@ -42,6 +42,7 @@ router.post('/signin', async (req, res) => {
     const token = jwt.sign({ teacherId: teacher.id }, 'your_jwt_secret', { expiresIn: '1h' });
     res.json({ token });
   } catch (error) {
+    console.log(error);
     res.status(500).json({ error: "Something went wrong" });
   }
 });
