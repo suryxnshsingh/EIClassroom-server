@@ -14,6 +14,7 @@ model Teacher {
   email    String  @unique
   password String
   subjects Subject[]
+  sheets   Sheet[]
 }
 
 model Subject {
@@ -22,15 +23,25 @@ model Subject {
   teacher   Teacher  @relation(fields: [teacherId], references: [id])
   teacherId Int
   students  Student[]
+  sheets    Sheet[]
 }
 
 model Student {
   id        Int      @id @default(autoincrement())
   name      String
   rollNumber String
+  subjects Subject[]
+}
+
+model Sheet {
+  id        Int      @id @default(autoincrement())
+  name      String
   subject   Subject  @relation(fields: [subjectCode], references: [code])
   subjectCode String
-  marks     Int
-  COs       String[]
-  POs       String[]
+  teacher   Teacher  @relation(fields: [teacherId], references: [id])
+  teacherId Int
+  MST1      Int
+  MST2      Int
+  Quiz_Assignment Int
+  EndSem     Int
 }
