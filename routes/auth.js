@@ -6,6 +6,7 @@ const prisma = new PrismaClient();
 const router = express.Router();
 
 
+
 router.post('/signup', async (req, res) => {
   const { firstName, lastName, email, password } = req.body;
   try {
@@ -39,7 +40,7 @@ router.post('/signin', async (req, res) => {
       return res.status(400).json({ error: "Invalid credentials" });
     }
 
-    const token = jwt.sign({ teacherId: teacher.id }, 'your_jwt_secret', { expiresIn: '1h' });
+    const token = jwt.sign({ teacherId: teacher.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
     res.json({ token });
   } catch (error) {
     console.log(error);

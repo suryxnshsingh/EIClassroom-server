@@ -22,15 +22,7 @@ model Subject {
   name      String
   teacher   Teacher  @relation(fields: [teacherId], references: [id])
   teacherId Int
-  students  Student[]
   sheets    Sheet[]
-}
-
-model Student {
-  id        Int      @id @default(autoincrement())
-  name      String
-  rollNumber String
-  subjects Subject[]
 }
 
 model Sheet {
