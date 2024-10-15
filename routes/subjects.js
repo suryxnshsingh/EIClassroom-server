@@ -6,7 +6,7 @@ const router = express.Router();
 
 
 // Create a new subject
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/newsubject', authenticateToken, async (req, res) => {
   const { name, code } = req.body;
   const teacherId = req.teacher.teacherId;
 
@@ -19,6 +19,32 @@ router.post('/', authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Failed to create subject" });
   }
 });
+//get all subjects for a teacher
+
+router.get('/subjects', authenticateToken, async (req, res) => {
+  const teacherId = req.teacher.teacherId;
+
+  try {
+    const subjects = await prisma.subject.findMany({
+      where: { teacherId },
+    });
+    res.json(subjects);
+  } catch (error) {
+    console.error("Error fetching subjects:", error);
+    res.status(500).json({ error: "Failed to fetch subjects" });
+  }
+});
+//get all subjects irrespective of teacher
+router.get('/allsubjects', async (req, res) => {
+  try {
+    const subjects = await prisma.subject.findMany();
+    res.json(subjects);
+  } catch (error) {
+    console.error("Error fetching subjects:", error);
+    res.status(500).json({ error: "Failed to fetch subjects" });
+  }
+});
+
 
 // Add a student to a subject
 // router.post('/subjects/:subjectId/students', authenticateToken, async (req, res) => {
