@@ -13,7 +13,7 @@ router.post('/submit-form', async (req, res) => {
     try {
       await prisma.sheet.create({
         data: {
-          id, // Use the id provided in the request body
+          id,
           name,
           subjectCode,
           teacherId,
@@ -21,6 +21,16 @@ router.post('/submit-form', async (req, res) => {
           MST2,
           Quiz_Assignment,
           EndSem,
+          subject: {
+            connect: {
+              subjectCode: subjectCode,
+            },
+          },
+          teacher: {
+            connect: {
+              teacherId: teacherId,
+            },
+          },
         },
       });
   
