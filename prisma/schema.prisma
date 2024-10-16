@@ -26,14 +26,16 @@ model Subject {
 }
 
 model Sheet {
-  id        Int      @id @default(autoincrement())
-  name      String
-  subject   Subject  @relation(fields: [subjectCode], references: [code])
-  subjectCode String
-  teacher   Teacher  @relation(fields: [teacherId], references: [id])
-  teacherId Int
-  MST1      Int
-  MST2      Int
-  Quiz_Assignment Int
-  EndSem     Int
+  id               String      // Part of composite primary key
+  subjectCode      String   // Part of composite primary key
+  name             String
+  subject          Subject  @relation(fields: [subjectCode], references: [code])
+  teacher          Teacher  @relation(fields: [teacherId], references: [id])
+  teacherId        Int
+  MST1             Int?     // Nullable field
+  MST2             Int?     // Nullable field
+  Quiz_Assignment  Int?     // Nullable field
+  EndSem           Int?     // Nullable field
+
+  @@id([id, subjectCode]) // Composite primary key
 }
