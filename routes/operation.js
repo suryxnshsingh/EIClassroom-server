@@ -51,7 +51,7 @@ router.get('/sheets', async (req, res) => {
 // Route to update a specific sheet entry by ID and subjectCode
 router.put('/sheets/:id/:subjectCode', async (req, res) => {
   const { id, subjectCode } = req.params;
-  const { name, teacherId, MST1, MST2, Quiz_Assignment, EndSem } = req.body;
+  const { name, MST1, MST2, Quiz_Assignment, EndSem } = req.body;
 
   try {
     const updatedSheet = await prisma.sheet.update({
