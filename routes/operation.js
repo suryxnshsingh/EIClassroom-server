@@ -63,7 +63,6 @@ router.put('/sheets/:id/:subjectCode', async (req, res) => {
       },
       data: {
         name,
-        teacherId,
         MST1,
         MST2,
         Quiz_Assignment,
