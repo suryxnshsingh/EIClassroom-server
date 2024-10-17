@@ -32,15 +32,10 @@ router.post('/submit-form', async (req, res) => {
         name,
         subjectCode,
         teacherId: subject.teacher.id, // Dynamically connect teacher through subjectCode
-        MST1,
-        MST2,
-        Quiz_Assignment,
-        EndSem,
-        subject: {
-          connect: {
-            code: subjectCode,
-          },
-        },
+        MST1: parseInt(MST1),
+        MST2: parseInt(MST2),
+        Quiz_Assignment: parseInt(Quiz_Assignment),
+        EndSem: parseInt(EndSem),
       },
     });
 
@@ -94,6 +89,75 @@ router.put('/sheets/:id/:subjectCode', async (req, res) => {
   } catch (error) {
     console.error('Error updating sheet:', error);
     res.status(500).json({ error: 'Error updating sheet' });
+  }
+});
+
+const ExcelJS = require('exceljs');
+
+// Route to download an Excel sheet with averages and MSTB calculation
+router.get('/download-sheets', async (req, res) => {
+  const { subjectCode } = req.query; // Get subjectCode from query parameter
+
+  try {
+    // Fetch the sheets for the specified subjectCode
+    const sheets = await prisma.sheet.findMany({
+      where: {
+        subjectCode: subjectCode,
+      },
+    });
+
+    if (sheets.length === 0) {
+      return res.status(404).json({ error: 'No sheets found for this subject code.' });
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Sheet Data');
+
+    // Add header row
+    worksheet.columns = [
+      { header: 'ID', key: 'id', width: 10 },
+      { header: 'Name', key: 'name', width: 30 },
+      { header: 'MST1', key: 'MST1', width: 10 },
+      { header: 'MST2', key: 'MST2', width: 10 },
+      { header: 'MSTB (Max of MST1 & MST2)', key: 'MSTB', width: 20 },
+      { header: 'Quiz/Assignment', key: 'Quiz_Assignment', width: 20 },
+      { header: 'End Sem', key: 'EndSem', width: 10 },
+    ];
+
+    // Add data rows with MSTB calculation
+    sheets.forEach((sheet) => {
+      worksheet.addRow({
+        id: sheet.id,
+        name: sheet.name,
+        MST1: sheet.MST1,
+        MST2: sheet.MST2,
+        MSTB: Math.max(sheet.MST1 || 0, sheet.MST2 || 0), // Calculate MSTB dynamically
+        Quiz_Assignment: sheet.Quiz_Assignment,
+        EndSem: sheet.EndSem,
+      });
+    });
+
+    // Add the average row at the end of the data
+    const lastRowNumber = worksheet.lastRow.number + 1; // Calculate the last row number
+    worksheet.addRow({
+      id: 'Average',
+      MST1: { formula: `AVERAGE(C2:C${lastRowNumber - 1})` }, // Average for MST1
+      MST2: { formula: `AVERAGE(D2:D${lastRowNumber - 1})` }, // Average for MST2
+      MSTB: { formula: `AVERAGE(E2:E${lastRowNumber - 1})` }, // Average for MSTB
+      Quiz_Assignment: { formula: `AVERAGE(F2:F${lastRowNumber - 1})` }, // Average for Quiz/Assignments
+      EndSem: { formula: `AVERAGE(G2:G${lastRowNumber - 1})` }, // Average for End Sem
+    }).font = { bold: true }; // Make the average row bold
+
+    // Set response headers for the download
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=sheets.xlsx');
+
+    // Write the Excel file to the response
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Error generating Excel sheet:', error);
+    res.status(500).json({ error: 'Error generating Excel sheet' });
   }
 });
 
