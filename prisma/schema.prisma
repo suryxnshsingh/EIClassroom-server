@@ -23,6 +23,7 @@ model Subject {
   teacher   Teacher  @relation(fields: [teacherId], references: [id])
   teacherId Int
   sheets    Sheet[]
+  CO       CO[]
 }
 
 model Sheet {
@@ -44,6 +45,17 @@ model Sheet {
   EndSem_Q3           Int?          // Nullable field
   EndSem_Q4           Int?          // Nullable field
   EndSem_Q5           Int?          // Nullable field
-
   @@id([id, subjectCode]) // Composite primary key
+}
+
+model CO {
+  subjectCode String @id 
+  subject             Subject       @relation(fields: [subjectCode], references: [code])
+  MST1_Q1 String
+  MST1_Q2 String
+  MST1_Q3 String
+  MST2_Q1 String
+  MST2_Q2 String
+  MST2_Q3 String
+  Quiz_Assignment String[]
 }
