@@ -49,6 +49,7 @@ model Sheet {
 }
 
 model CO {
+
   subjectCode String @id 
   subject             Subject       @relation(fields: [subjectCode], references: [code])
   MST1_Q1 String
