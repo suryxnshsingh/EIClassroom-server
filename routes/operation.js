@@ -6,6 +6,7 @@ router.use(express.json());
 
 const prisma = new PrismaClient();
 
+
 // Route to post Exam CO schema
 router.post('/co-form', async (req, res) => {
   const { subjectCode, mst1, mst2, quizAssignment } = req.body;
@@ -175,11 +176,344 @@ router.put('/sheets/:id/:subjectCode', async (req, res) => {
 
 const ExcelJS = require('exceljs');
 
+
+router.get('/downloadmst1/:subjectCode', async (req, res) => {
+    const { subjectCode } = req.params;
+  
+    try {
+      // Fetch CO mappings from the CO table
+      const coData = await prisma.cO.findUnique({
+        where: { subjectCode },
+      });
+  
+      if (!coData) {
+        return res.status(404).json({ error: 'CO mapping not found for this subject' });
+      }
+  
+      // Fetch student scores from the Sheet table
+      const studentScores = await prisma.sheet.findMany({
+        where: { subjectCode },
+      });
+  
+      if (studentScores.length === 0) {
+        return res.status(404).json({ error: 'No student scores found for this subject' });
+      }
+  
+      // Create a new Excel workbook and sheet
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('CO Attainment');
+  
+      // Set column widths and headers
+      worksheet.columns = [
+        { header: 'Enrollment Number', key: 'enrollment', width: 20 },
+        { header: 'Name', key: 'name', width: 30 },
+        { header: `Q1-${coData.MST1_Q1}`, key: 'q1', width: 15 },
+        { header: `Q2-${coData.MST1_Q2}`, key: 'q2', width: 15 },
+        { header: `Q3-${coData.MST1_Q3}`, key: 'q3', width: 15 },
+        { header: 'Total CO1', key: 'totalCO1', width: 15 },
+        { header: 'Total CO2', key: 'totalCO2', width: 15 },
+        { header: 'Total CO3', key: 'totalCO3', width: 15 },
+        { header: 'Total CO4', key: 'totalCO4', width: 15 },
+        { header: 'Total CO5', key: 'totalCO5', width: 15 }
+      ];
+  
+    // Function to calculate CO totals for a student
+      const calculateCOTotals = (student) => {
+        const totals = {
+          totalCO1: 0,
+          totalCO2: 0,
+          totalCO3: 0,
+          totalCO4: 0,
+          totalCO5: 0
+        };
+  
+ // Function to add score to appropriate CO total
+        const addScoreToCO = (coMapping, score) => {
+          switch (coMapping) {
+            case 'CO1': totals.totalCO1 += score || 0; break;
+            case 'CO2': totals.totalCO2 += score || 0; break;
+            case 'CO3': totals.totalCO3 += score || 0; break;
+            case 'CO4': totals.totalCO4 += score || 0; break;
+            case 'CO5': totals.totalCO5 += score || 0; break;
+          }
+        };
+  
+        // Map scores to their respective COs
+        addScoreToCO(coData.MST1_Q1, student.MST1_Q1);
+        addScoreToCO(coData.MST1_Q2, student.MST1_Q2);
+        addScoreToCO(coData.MST1_Q3, student.MST1_Q3);
+  
+        return totals;
+      };
+  
+      // Initialize grand totals for all COs
+      const grandTotals = {
+        totalCO1: 0,
+        totalCO2: 0,
+        totalCO3: 0,
+        totalCO4: 0,
+        totalCO5: 0
+      };
+  
+      // Add rows for each student with their scores
+      studentScores.forEach((student) => {
+        const coTotals = calculateCOTotals(student);
+        
+        // Add to grand totals
+        Object.keys(grandTotals).forEach(key => {
+          grandTotals[key] += coTotals[key];
+        });
+  
+        worksheet.addRow({
+          enrollment: student.id,
+          name: student.name,
+          q1: student.MST1_Q1 || 0,
+          q2: student.MST1_Q2 || 0,
+          q3: student.MST1_Q3 || 0,
+          ...coTotals
+        });
+      });
+  
+      const studentCount = studentScores.length;
+      
+      // Calculate averages for all COs
+      const averages = {};
+      Object.keys(grandTotals).forEach(key => {
+        averages[key] = grandTotals[key] / studentCount;
+      });
+  
+      // Add a row for average (target marks)
+      worksheet.addRow({
+        enrollment: 'Average (Target Marks)',
+        ...averages
+      });
+  
+      // Count students who achieved >= target marks for each CO
+      const studentsAboveTarget = {
+        totalCO1: 0,
+        totalCO2: 0,
+        totalCO3: 0,
+        totalCO4: 0,
+        totalCO5: 0
+      };
+  
+      studentScores.forEach(student => {
+        const coTotals = calculateCOTotals(student);
+        Object.keys(studentsAboveTarget).forEach(key => {
+          if (coTotals[key] >= averages[key]) {
+            studentsAboveTarget[key]++;
+          }
+        });
+      });
+  
+      // Add a row for students above target marks
+      worksheet.addRow({
+        enrollment: 'Students >= Target Marks',
+        ...studentsAboveTarget
+      });
+  
+      // Calculate percentages for all COs
+      const percentages = {};
+      Object.keys(studentsAboveTarget).forEach(key => {
+        percentages[key] = `${((studentsAboveTarget[key] / studentCount) * 100).toFixed(2)}%`;
+      });
+  
+      // Add a row for percentages
+      worksheet.addRow({
+        enrollment: 'Percentage',
+        ...percentages
+      });
+  
+      // Prepare the response with the generated Excel file
+      const fileName = `CO_Attainment_${subjectCode}.xlsx`;
+      res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  
+      // Write the workbook to the response
+      await workbook.xlsx.write(res);
+      res.end();
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Failed to generate the Excel sheet' });
+    }
+  });
+
+
+  router.get('/downloadmst2/:subjectCode', async (req, res) => {
+      const { subjectCode } = req.params;
+    
+      try {
+        // Fetch CO mappings from the CO table
+        const coData = await prisma.cO.findUnique({
+          where: { subjectCode },
+        });
+    
+        if (!coData) {
+          return res.status(404).json({ error: 'CO mapping not found for this subject' });
+        }
+    
+        // Fetch student scores from the Sheet table
+        const studentScores = await prisma.sheet.findMany({
+          where: { subjectCode },
+        });
+    
+        if (studentScores.length === 0) {
+          return res.status(404).json({ error: 'No student scores found for this subject' });
+        }
+    
+        // Create a new Excel workbook and sheet
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('CO Attainment');
+    
+        // Set column widths and headers
+        worksheet.columns = [
+          { header: 'Enrollment Number', key: 'enrollment', width: 20 },
+          { header: 'Name', key: 'name', width: 30 },
+          { header: `Q1-${coData.MST2_Q1}`, key: 'q1', width: 15 },
+          { header: `Q2-${coData.MST2_Q2}`, key: 'q2', width: 15 },
+          { header: `Q3-${coData.MST2_Q3}`, key: 'q3', width: 15 },
+          { header: 'Total CO1', key: 'totalCO1', width: 15 },
+          { header: 'Total CO2', key: 'totalCO2', width: 15 },
+          { header: 'Total CO3', key: 'totalCO3', width: 15 },
+          { header: 'Total CO4', key: 'totalCO4', width: 15 },
+          { header: 'Total CO5', key: 'totalCO5', width: 15 }
+        ];
+    
+      // Function to calculate CO totals for a student
+        const calculateCOTotals = (student) => {
+          const totals = {
+            totalCO1: 0,
+            totalCO2: 0,
+            totalCO3: 0,
+            totalCO4: 0,
+            totalCO5: 0
+          };
+    
+   // Function to add score to appropriate CO total
+          const addScoreToCO = (coMapping, score) => {
+            switch (coMapping) {
+              case 'CO1': totals.totalCO1 += score || 0; break;
+              case 'CO2': totals.totalCO2 += score || 0; break;
+              case 'CO3': totals.totalCO3 += score || 0; break;
+              case 'CO4': totals.totalCO4 += score || 0; break;
+              case 'CO5': totals.totalCO5 += score || 0; break;
+            }
+          };
+    
+          // Map scores to their respective COs
+          addScoreToCO(coData.MST2_Q1, student.MST2_Q1);
+          addScoreToCO(coData.MST2_Q2, student.MST2_Q2);
+          addScoreToCO(coData.MST2_Q3, student.MST2_Q3);
+    
+          return totals;
+        };
+    
+        // Initialize grand totals for all COs
+        const grandTotals = {
+          totalCO1: 0,
+          totalCO2: 0,
+          totalCO3: 0,
+          totalCO4: 0,
+          totalCO5: 0
+        };
+    
+        // Add rows for each student with their scores
+        studentScores.forEach((student) => {
+          const coTotals = calculateCOTotals(student);
+          
+          // Add to grand totals
+          Object.keys(grandTotals).forEach(key => {
+            grandTotals[key] += coTotals[key];
+          });
+    
+          worksheet.addRow({
+            enrollment: student.id,
+            name: student.name,
+            q1: student.MST2_Q1 || 0,
+            q2: student.MST2_Q2 || 0,
+            q3: student.MST2_Q3 || 0,
+            ...coTotals
+          });
+        });
+    
+        const studentCount = studentScores.length;
+        
+        // Calculate averages for all COs
+        const averages = {};
+        Object.keys(grandTotals).forEach(key => {
+          averages[key] = grandTotals[key] / studentCount;
+        });
+    
+        // Add a row for average (target marks)
+        worksheet.addRow({
+          enrollment: 'Average (Target Marks)',
+          ...averages
+        });
+    
+        // Count students who achieved >= target marks for each CO
+        const studentsAboveTarget = {
+          totalCO1: 0,
+          totalCO2: 0,
+          totalCO3: 0,
+          totalCO4: 0,
+          totalCO5: 0
+        };
+    
+        studentScores.forEach(student => {
+          const coTotals = calculateCOTotals(student);
+          Object.keys(studentsAboveTarget).forEach(key => {
+            if (coTotals[key] >= averages[key]) {
+              studentsAboveTarget[key]++;
+            }
+          });
+        });
+    
+        // Add a row for students above target marks
+        worksheet.addRow({
+          enrollment: 'Students >= Target Marks',
+          ...studentsAboveTarget
+        });
+    
+        // Calculate percentages for all COs
+        const percentages = {};
+        Object.keys(studentsAboveTarget).forEach(key => {
+          percentages[key] = `${((studentsAboveTarget[key] / studentCount) * 100).toFixed(2)}%`;
+        });
+    
+        // Add a row for percentages
+        worksheet.addRow({
+          enrollment: 'Percentage',
+          ...percentages
+        });
+    
+        // Prepare the response with the generated Excel file
+        const fileName = `CO_Attainment_${subjectCode}.xlsx`;
+        res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    
+        // Write the workbook to the response
+        await workbook.xlsx.write(res);
+        res.end();
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Failed to generate the Excel sheet' });
+      }
+    });
+
 // Route to download an Excel sheet with calculations and averages
 router.get('/download-sheets', async (req, res) => {
   const { subjectCode } = req.query; // Get subjectCode from query parameter
 
   try {
+    // Fetch the subject details
+    const subject = await prisma.subject.findUnique({
+      where: { code: subjectCode },
+    });
+
+    if (!subject) {
+      return res.status(404).json({ error: 'Subject not found.' });
+    }
+
     // Fetch the sheets for the specified subjectCode
     const sheets = await prisma.sheet.findMany({
       where: {
@@ -194,27 +528,38 @@ router.get('/download-sheets', async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Sheet Data');
 
-    // Add header row
+    // Add header rows
+    worksheet.addRow(['Shri G. S. Institute of Tech. and Science']);
+    worksheet.addRow(['Department of Electronics and Instrumentation Engineering']);
+    worksheet.addRow([`Course Outcome Sheet for ${subjectCode}-${subject.name}`]);
+
+    // Center align and merge the header rows
+    for (let i = 1; i <= 3; i++) {
+      worksheet.getRow(i).alignment = { horizontal: 'center' };
+      worksheet.mergeCells(`A${i}:S${i}`);
+    }
+
+    // Add an empty row for spacing
+    worksheet.addRow([]);
+
+    // Add main header row
+    worksheet.addRow([
+      'Enrollment Number', 'Name', 'Subject Code', 'MST1_Q1', 'MST1_Q2', 'MST1_Q3', 'MST1_Total',
+      'MST2_Q1', 'MST2_Q2', 'MST2_Q3', 'MST2_Total', 'MST_Best', 'Quiz/Assignment',
+      'EndSem_Q1', 'EndSem_Q2', 'EndSem_Q3', 'EndSem_Q4', 'EndSem_Q5', 'EndSem_Total'
+    ]);
+
+    // Style the main header row
+    worksheet.getRow(5).font = { bold: true };
+    worksheet.getRow(5).alignment = { horizontal: 'center' };
+
+    // Set column widths
     worksheet.columns = [
-      { header: 'Enrollment Number', key: 'id', width: 20 },
-      { header: 'Name', key: 'name', width: 30 },
-      { header: 'Subject Code', key: 'subjectCode', width: 15 },
-      { header: 'MST1_Q1', key: 'MST1_Q1', width: 10 },
-      { header: 'MST1_Q2', key: 'MST1_Q2', width: 10 },
-      { header: 'MST1_Q3', key: 'MST1_Q3', width: 10 },
-      { header: 'MST1_Total', key: 'MST1_Total', width: 15 },
-      { header: 'MST2_Q1', key: 'MST2_Q1', width: 10 },
-      { header: 'MST2_Q2', key: 'MST2_Q2', width: 10 },
-      { header: 'MST2_Q3', key: 'MST2_Q3', width: 10 },
-      { header: 'MST2_Total', key: 'MST2_Total', width: 15 },
-      { header: 'MST_Best', key: 'MST_Best', width: 15 },
-      { header: 'Quiz/Assignment', key: 'Quiz_Assignment', width: 20 },
-      { header: 'EndSem_Q1', key: 'EndSem_Q1', width: 10 },
-      { header: 'EndSem_Q2', key: 'EndSem_Q2', width: 10 },
-      { header: 'EndSem_Q3', key: 'EndSem_Q3', width: 10 },
-      { header: 'EndSem_Q4', key: 'EndSem_Q4', width: 10 },
-      { header: 'EndSem_Q5', key: 'EndSem_Q5', width: 10 },
-      { header: 'EndSem_Total', key: 'EndSem_Total', width: 15 },
+      { width: 20 }, { width: 30 }, { width: 15 },
+      { width: 10 }, { width: 10 }, { width: 10 }, { width: 15 },
+      { width: 10 }, { width: 10 }, { width: 10 }, { width: 15 },
+      { width: 15 }, { width: 20 },
+      { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 15 }
     ];
 
     // Add data rows with calculations for MST1_Total, MST2_Total, MST_Best, and EndSem_Total
@@ -224,50 +569,24 @@ router.get('/download-sheets', async (req, res) => {
       const MST_Best = Math.max(MST1_Total, MST2_Total);
       const EndSem_Total = (sheet.EndSem_Q1 || 0) + (sheet.EndSem_Q2 || 0) + (sheet.EndSem_Q3 || 0) + (sheet.EndSem_Q4 || 0) + (sheet.EndSem_Q5 || 0);
 
-      worksheet.addRow({
-        id: sheet.id,
-        name: sheet.name,
-        subjectCode: sheet.subjectCode,
-        MST1_Q1: sheet.MST1_Q1,
-        MST1_Q2: sheet.MST1_Q2,
-        MST1_Q3: sheet.MST1_Q3,
-        MST1_Total,
-        MST2_Q1: sheet.MST2_Q1,
-        MST2_Q2: sheet.MST2_Q2,
-        MST2_Q3: sheet.MST2_Q3,
-        MST2_Total,
-        MST_Best,
-        Quiz_Assignment: sheet.Quiz_Assignment,
-        EndSem_Q1: sheet.EndSem_Q1,
-        EndSem_Q2: sheet.EndSem_Q2,
-        EndSem_Q3: sheet.EndSem_Q3,
-        EndSem_Q4: sheet.EndSem_Q4,
-        EndSem_Q5: sheet.EndSem_Q5,
-        EndSem_Total,
-      });
+      worksheet.addRow([
+        sheet.id, sheet.name, sheet.subjectCode,
+        sheet.MST1_Q1, sheet.MST1_Q2, sheet.MST1_Q3, MST1_Total,
+        sheet.MST2_Q1, sheet.MST2_Q2, sheet.MST2_Q3, MST2_Total,
+        MST_Best, sheet.Quiz_Assignment,
+        sheet.EndSem_Q1, sheet.EndSem_Q2, sheet.EndSem_Q3, sheet.EndSem_Q4, sheet.EndSem_Q5, EndSem_Total
+      ]);
     });
 
     // Add the average row at the end of the data
     const lastRowNumber = worksheet.lastRow.number;
-    worksheet.addRow({
-      id: 'Average',
-      MST1_Q1: { formula: `AVERAGE(D2:D${lastRowNumber})` },
-      MST1_Q2: { formula: `AVERAGE(E2:E${lastRowNumber})` },
-      MST1_Q3: { formula: `AVERAGE(F2:F${lastRowNumber})` },
-      MST1_Total: { formula: `AVERAGE(G2:G${lastRowNumber})` },
-      MST2_Q1: { formula: `AVERAGE(H2:H${lastRowNumber})` },
-      MST2_Q2: { formula: `AVERAGE(I2:I${lastRowNumber})` },
-      MST2_Q3: { formula: `AVERAGE(J2:J${lastRowNumber})` },
-      MST2_Total: { formula: `AVERAGE(K2:K${lastRowNumber})` },
-      MST_Best: { formula: `AVERAGE(L2:L${lastRowNumber})` },
-      Quiz_Assignment: { formula: `AVERAGE(M2:M${lastRowNumber})` },
-      EndSem_Q1: { formula: `AVERAGE(N2:N${lastRowNumber})` },
-      EndSem_Q2: { formula: `AVERAGE(O2:O${lastRowNumber})` },
-      EndSem_Q3: { formula: `AVERAGE(P2:P${lastRowNumber})` },
-      EndSem_Q4: { formula: `AVERAGE(Q2:Q${lastRowNumber})` },
-      EndSem_Q5: { formula: `AVERAGE(R2:R${lastRowNumber})` },
-      EndSem_Total: { formula: `AVERAGE(S2:S${lastRowNumber})` },
-    }).font = { bold: true }; // Make the average row bold
+    const averageRow = worksheet.addRow(['Average']);
+    averageRow.font = { bold: true };
+
+    // Calculate averages for each column
+    for (let col = 4; col <= 19; col++) {
+      averageRow.getCell(col).value = { formula: `AVERAGE(${String.fromCharCode(64 + col)}6:${String.fromCharCode(64 + col)}${lastRowNumber})` };
+    }
 
     // Set response headers for the download
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
