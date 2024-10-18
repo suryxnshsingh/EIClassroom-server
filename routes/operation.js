@@ -6,6 +6,41 @@ router.use(express.json());
 
 const prisma = new PrismaClient();
 
+// Route to post Exam CO schema
+router.post('/co-form', async (req, res) => {
+  const { subjectCode, mst1, mst2, quizAssignment } = req.body;
+
+  try {
+    const newCO = await prisma.cO.upsert({
+      where: { subjectCode },
+      update: {
+        MST1_Q1: mst1.Q1,
+        MST1_Q2: mst1.Q2,
+        MST1_Q3: mst1.Q3,
+        MST2_Q1: mst2.Q1,
+        MST2_Q2: mst2.Q2,
+        MST2_Q3: mst2.Q3,
+        Quiz_Assignment: quizAssignment,
+      },
+      create: {
+        subjectCode,
+        MST1_Q1: mst1.Q1,
+        MST1_Q2: mst1.Q2,
+        MST1_Q3: mst1.Q3,
+        MST2_Q1: mst2.Q1,
+        MST2_Q2: mst2.Q2,
+        MST2_Q3: mst2.Q3,
+        Quiz_Assignment: quizAssignment,
+      },
+    });
+
+    res.status(201).json(newCO);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to submit the form' });
+  }
+});
+
 // Route to create a new sheet entry
 router.post('/submit-form', async (req, res) => {
   const { 
