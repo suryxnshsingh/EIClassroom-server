@@ -145,6 +145,15 @@ router.get('/download-sheets', async (req, res) => {
   const { subjectCode } = req.query; // Get subjectCode from query parameter
 
   try {
+    // Fetch the subject details
+    const subject = await prisma.subject.findUnique({
+      where: { code: subjectCode },
+    });
+
+    if (!subject) {
+      return res.status(404).json({ error: 'Subject not found.' });
+    }
+
     // Fetch the sheets for the specified subjectCode
     const sheets = await prisma.sheet.findMany({
       where: {
@@ -159,27 +168,38 @@ router.get('/download-sheets', async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Sheet Data');
 
-    // Add header row
+    // Add header rows
+    worksheet.addRow(['Shri G. S. Institute of Tech. and Science']);
+    worksheet.addRow(['Department of Electronics and Instrumentation Engineering']);
+    worksheet.addRow([`Course Outcome Sheet for ${subjectCode}-${subject.name}`]);
+
+    // Center align and merge the header rows
+    for (let i = 1; i <= 3; i++) {
+      worksheet.getRow(i).alignment = { horizontal: 'center' };
+      worksheet.mergeCells(`A${i}:S${i}`);
+    }
+
+    // Add an empty row for spacing
+    worksheet.addRow([]);
+
+    // Add main header row
+    worksheet.addRow([
+      'Enrollment Number', 'Name', 'Subject Code', 'MST1_Q1', 'MST1_Q2', 'MST1_Q3', 'MST1_Total',
+      'MST2_Q1', 'MST2_Q2', 'MST2_Q3', 'MST2_Total', 'MST_Best', 'Quiz/Assignment',
+      'EndSem_Q1', 'EndSem_Q2', 'EndSem_Q3', 'EndSem_Q4', 'EndSem_Q5', 'EndSem_Total'
+    ]);
+
+    // Style the main header row
+    worksheet.getRow(5).font = { bold: true };
+    worksheet.getRow(5).alignment = { horizontal: 'center' };
+
+    // Set column widths
     worksheet.columns = [
-      { header: 'Enrollment Number', key: 'id', width: 20 },
-      { header: 'Name', key: 'name', width: 30 },
-      { header: 'Subject Code', key: 'subjectCode', width: 15 },
-      { header: 'MST1_Q1', key: 'MST1_Q1', width: 10 },
-      { header: 'MST1_Q2', key: 'MST1_Q2', width: 10 },
-      { header: 'MST1_Q3', key: 'MST1_Q3', width: 10 },
-      { header: 'MST1_Total', key: 'MST1_Total', width: 15 },
-      { header: 'MST2_Q1', key: 'MST2_Q1', width: 10 },
-      { header: 'MST2_Q2', key: 'MST2_Q2', width: 10 },
-      { header: 'MST2_Q3', key: 'MST2_Q3', width: 10 },
-      { header: 'MST2_Total', key: 'MST2_Total', width: 15 },
-      { header: 'MST_Best', key: 'MST_Best', width: 15 },
-      { header: 'Quiz/Assignment', key: 'Quiz_Assignment', width: 20 },
-      { header: 'EndSem_Q1', key: 'EndSem_Q1', width: 10 },
-      { header: 'EndSem_Q2', key: 'EndSem_Q2', width: 10 },
-      { header: 'EndSem_Q3', key: 'EndSem_Q3', width: 10 },
-      { header: 'EndSem_Q4', key: 'EndSem_Q4', width: 10 },
-      { header: 'EndSem_Q5', key: 'EndSem_Q5', width: 10 },
-      { header: 'EndSem_Total', key: 'EndSem_Total', width: 15 },
+      { width: 20 }, { width: 30 }, { width: 15 },
+      { width: 10 }, { width: 10 }, { width: 10 }, { width: 15 },
+      { width: 10 }, { width: 10 }, { width: 10 }, { width: 15 },
+      { width: 15 }, { width: 20 },
+      { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 15 }
     ];
 
     // Add data rows with calculations for MST1_Total, MST2_Total, MST_Best, and EndSem_Total
@@ -189,50 +209,24 @@ router.get('/download-sheets', async (req, res) => {
       const MST_Best = Math.max(MST1_Total, MST2_Total);
       const EndSem_Total = (sheet.EndSem_Q1 || 0) + (sheet.EndSem_Q2 || 0) + (sheet.EndSem_Q3 || 0) + (sheet.EndSem_Q4 || 0) + (sheet.EndSem_Q5 || 0);
 
-      worksheet.addRow({
-        id: sheet.id,
-        name: sheet.name,
-        subjectCode: sheet.subjectCode,
-        MST1_Q1: sheet.MST1_Q1,
-        MST1_Q2: sheet.MST1_Q2,
-        MST1_Q3: sheet.MST1_Q3,
-        MST1_Total,
-        MST2_Q1: sheet.MST2_Q1,
-        MST2_Q2: sheet.MST2_Q2,
-        MST2_Q3: sheet.MST2_Q3,
-        MST2_Total,
-        MST_Best,
-        Quiz_Assignment: sheet.Quiz_Assignment,
-        EndSem_Q1: sheet.EndSem_Q1,
-        EndSem_Q2: sheet.EndSem_Q2,
-        EndSem_Q3: sheet.EndSem_Q3,
-        EndSem_Q4: sheet.EndSem_Q4,
-        EndSem_Q5: sheet.EndSem_Q5,
-        EndSem_Total,
-      });
+      worksheet.addRow([
+        sheet.id, sheet.name, sheet.subjectCode,
+        sheet.MST1_Q1, sheet.MST1_Q2, sheet.MST1_Q3, MST1_Total,
+        sheet.MST2_Q1, sheet.MST2_Q2, sheet.MST2_Q3, MST2_Total,
+        MST_Best, sheet.Quiz_Assignment,
+        sheet.EndSem_Q1, sheet.EndSem_Q2, sheet.EndSem_Q3, sheet.EndSem_Q4, sheet.EndSem_Q5, EndSem_Total
+      ]);
     });
 
     // Add the average row at the end of the data
     const lastRowNumber = worksheet.lastRow.number;
-    worksheet.addRow({
-      id: 'Average',
-      MST1_Q1: { formula: `AVERAGE(D2:D${lastRowNumber})` },
-      MST1_Q2: { formula: `AVERAGE(E2:E${lastRowNumber})` },
-      MST1_Q3: { formula: `AVERAGE(F2:F${lastRowNumber})` },
-      MST1_Total: { formula: `AVERAGE(G2:G${lastRowNumber})` },
-      MST2_Q1: { formula: `AVERAGE(H2:H${lastRowNumber})` },
-      MST2_Q2: { formula: `AVERAGE(I2:I${lastRowNumber})` },
-      MST2_Q3: { formula: `AVERAGE(J2:J${lastRowNumber})` },
-      MST2_Total: { formula: `AVERAGE(K2:K${lastRowNumber})` },
-      MST_Best: { formula: `AVERAGE(L2:L${lastRowNumber})` },
-      Quiz_Assignment: { formula: `AVERAGE(M2:M${lastRowNumber})` },
-      EndSem_Q1: { formula: `AVERAGE(N2:N${lastRowNumber})` },
-      EndSem_Q2: { formula: `AVERAGE(O2:O${lastRowNumber})` },
-      EndSem_Q3: { formula: `AVERAGE(P2:P${lastRowNumber})` },
-      EndSem_Q4: { formula: `AVERAGE(Q2:Q${lastRowNumber})` },
-      EndSem_Q5: { formula: `AVERAGE(R2:R${lastRowNumber})` },
-      EndSem_Total: { formula: `AVERAGE(S2:S${lastRowNumber})` },
-    }).font = { bold: true }; // Make the average row bold
+    const averageRow = worksheet.addRow(['Average']);
+    averageRow.font = { bold: true };
+
+    // Calculate averages for each column
+    for (let col = 4; col <= 19; col++) {
+      averageRow.getCell(col).value = { formula: `AVERAGE(${String.fromCharCode(64 + col)}6:${String.fromCharCode(64 + col)}${lastRowNumber})` };
+    }
 
     // Set response headers for the download
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
