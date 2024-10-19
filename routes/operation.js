@@ -940,15 +940,15 @@ router.get('/generate-co-attainment/:subjectCode', async (req, res) => {
     // Add title
     worksheet.mergeCells('A1:G1');
     const titleCell = worksheet.getCell('A1');
-    titleCell.value = 'Overall Direct CO attainment';
+    titleCell.value = 'SGSITS Indore - Overall Direct CO attainment';
     titleCell.font = { bold: true, size: 14 };
     titleCell.alignment = { horizontal: 'center' };
     
     // Add headers
     const headers = [
-      ['', 'Cumulative Internal Evaluation(CIE) 30% weightage', '', '', 'CIE', 'SEE (Semester End sem Exam)', 'CO Direct Attainment'],
-      ['', 'MST-1 (15M)', 'MST-2 (15M)', 'Assignment/Quiz (10)', '', 'End Sem Exam (70M)', ''],
-      ['', '30% Weightage', '', '', '30% Weightage for each CO', '70% Weightage', '30%+70% for each CO']
+      ['', '', '', '', 'Cumulative Internal Evaluation', 'SEE (Semester End sem Exam)', 'CO Direct Attainment'],
+      ['', 'MST-1 (15M)', 'MST-2 (15M)', 'Assignment/Quiz (10)', '(CIE)', '', 'Total'],
+      ['', '', '', '', '30% Weightage', '70% Weightage', '30%+70% for each CO']
     ];
     
     worksheet.mergeCells('B3:D3');
